@@ -3,6 +3,7 @@ import re
 import asyncio
 import os
 import secrets
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -49,6 +50,12 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=200)
 
 
+class SignupRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
+    password: str = Field(min_length=8, max_length=200)
+
+
 class AiResolution(BaseModel):
     category: str
     priority: Literal["normal", "high", "urgent"]
@@ -66,7 +73,30 @@ def now_iso() -> str:
 
 DEMO_USERNAME = os.getenv("EKO_DEMO_USERNAME", "prabal")
 DEMO_PASSWORD = os.getenv("EKO_DEMO_PASSWORD", "eko-demo")
+users: dict[str, dict[str, str]] = {}
 sessions: dict[str, dict[str, str]] = {}
+
+
+def password_hash(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
+    return f"{salt}${digest}"
+
+
+def password_matches(password: str, stored: str) -> bool:
+    salt, expected = stored.split("$", 1)
+    actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
+    return secrets.compare_digest(actual, expected)
+
+
+def seed_demo_user() -> None:
+    if DEMO_USERNAME not in users:
+        users[DEMO_USERNAME] = {
+            "name": "Prabal Goswami",
+            "username": DEMO_USERNAME,
+            "role": "Field operations",
+            "password_hash": password_hash(DEMO_PASSWORD),
+        }
 
 
 def current_user(authorization: str | None = Header(default=None)) -> dict[str, str]:
@@ -350,15 +380,33 @@ async def health():
 
 @app.post("/api/auth/login")
 async def login(payload: LoginRequest):
-    if not (
-        secrets.compare_digest(payload.username, DEMO_USERNAME)
-        and secrets.compare_digest(payload.password, DEMO_PASSWORD)
-    ):
+    seed_demo_user()
+    user = users.get(payload.username)
+    if not user or not password_matches(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     token = secrets.token_urlsafe(32)
-    user = {"username": DEMO_USERNAME, "name": "Prabal Goswami", "role": "Field operations"}
-    sessions[token] = user
-    return {"token": token, "user": user}
+    public_user = {key: value for key, value in user.items() if key != "password_hash"}
+    sessions[token] = public_user
+    return {"token": token, "user": public_user}
+
+
+@app.post("/api/auth/signup")
+async def signup(payload: SignupRequest):
+    seed_demo_user()
+    username = payload.username.lower()
+    if username in users:
+        raise HTTPException(status_code=409, detail="Username already exists")
+    user = {
+        "name": payload.name.strip(),
+        "username": username,
+        "role": "Field operations",
+        "password_hash": password_hash(payload.password),
+    }
+    users[username] = user
+    token = secrets.token_urlsafe(32)
+    public_user = {key: value for key, value in user.items() if key != "password_hash"}
+    sessions[token] = public_user
+    return {"token": token, "user": public_user}
 
 
 @app.get("/api/auth/me")

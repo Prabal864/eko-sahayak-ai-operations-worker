@@ -49,6 +49,27 @@ def test_login_and_logout():
     assert client.get("/api/auth/me", headers=headers).status_code == 401
 
 
+def test_signup_creates_account_and_session():
+    username = "new_operator"
+    response = client.post(
+        "/api/auth/signup",
+        json={"name": "New Operator", "username": username, "password": "safe-demo-password"},
+    )
+    assert response.status_code == 200
+    headers = {"Authorization": "Bearer " + response.json()["token"]}
+    assert response.json()["user"]["username"] == username
+    assert "password_hash" not in response.json()["user"]
+    assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+
+def test_signup_rejects_duplicate_username():
+    response = client.post(
+        "/api/auth/signup",
+        json={"name": "Duplicate", "username": "prabal", "password": "safe-demo-password"},
+    )
+    assert response.status_code == 409
+
+
 def test_payment_routes_to_payments_operations():
     result = analyze("Settlement is missing after a successful customer payment.")
     assert result["category"] == "Settlement / payout"

@@ -77,6 +77,7 @@ The prototype redacts common patterns for long numeric identifiers, ten-digit ph
 | --- | --- | --- |
 | GET | `/api/health` | Service health |
 | POST | `/api/auth/login` | Create a local demo session |
+| POST | `/api/auth/signup` | Create a local operator account and session |
 | GET | `/api/auth/me` | Restore the signed-in user |
 | POST | `/api/auth/logout` | Invalidate the current session |
 | GET | `/api/cases` | Cases and summary counts |

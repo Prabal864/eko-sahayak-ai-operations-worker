@@ -41,16 +41,26 @@ function Header({ label, user, onLogout }) {
 }
 
 function Login({ onLogin }) {
+  const [mode, setMode] = useState("login");
+  const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
     setError("");
+    if (mode === "signup" && password !== confirmPassword) {
+      setError("Passwords do not match.");
+      setBusy(false);
+      return;
+    }
     try {
-      const result = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      const path = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+      const body = mode === "login" ? { username, password } : { name, username, password };
+      const result = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       localStorage.setItem("eko_session", result.token);
       onLogin(result.user);
     } catch (loginError) {
@@ -59,7 +69,7 @@ function Login({ onLogin }) {
       setBusy(false);
     }
   };
-  return <main className="login-shell"><section className="login-panel"><div className="login-brand"><div className="brand-mark">e</div><div><strong>Eko Sahayak</strong><span>Operations worker</span></div></div><h1>Welcome back</h1><p>Sign in to review field operations and resolve cases safely.</p><form onSubmit={submit}><div className="field"><label htmlFor="username">Username</label><input id="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Enter username" required /></div><div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" required /></div>{error && <div className="form-error" role="alert">{error}</div>}<button className="primary login-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><div className="login-note"><span className="dot" /><span>Local demo access. Your session is kept on this device.</span></div></section></main>;
+  return <main className="login-shell"><section className="login-panel"><div className="login-brand"><div className="brand-mark">e</div><div><strong>Eko Sahayak</strong><span>Operations worker</span></div></div><h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1><p>{mode === "login" ? "Sign in to review field operations and resolve cases safely." : "Create a local operator account to access the operations desk."}</p><form onSubmit={submit}>{mode === "signup" && <div className="field"><label htmlFor="name">Full name</label><input id="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Enter your name" required /></div>}<div className="field"><label htmlFor="username">Username</label><input id="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Enter username" required /></div><div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "login" ? "Enter password" : "At least 8 characters"} required /></div>{mode === "signup" && <div className="field"><label htmlFor="confirm-password">Confirm password</label><input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter password" required /></div>}{error && <div className="form-error" role="alert">{error}</div>}<button className="primary login-button" disabled={busy}>{busy ? (mode === "login" ? "Signing in…" : "Creating account…") : (mode === "login" ? "Sign in" : "Create account")}</button></form><button className="auth-switch" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}> {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}</button><div className="login-note"><span className="dot" /><span>Local demo access. Your session is kept on this device.</span></div></section></main>;
 }
 
 function Overview({ cases, summary, onNew, onOpen }) {

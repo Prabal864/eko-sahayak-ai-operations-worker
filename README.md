@@ -48,6 +48,10 @@ those credentials. The default local demo credentials are `prabal` / `eko-demo`
 when the variables are not configured. Case, audit, and status APIs require a
 valid bearer session; health and login remain public. Use **Log out** in the
 header or sidebar to invalidate the backend session and clear the browser token.
+New operators can use **Sign up** on the login screen. Signup validates the
+username and password, hashes the password before storing it, creates a local
+session, and opens the dashboard immediately. Accounts are stored in memory in
+this demo and are lost when the backend restarts.
 
 ### React frontend
 
