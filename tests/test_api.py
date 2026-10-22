@@ -6,9 +6,17 @@ from backend.main import app
 client = TestClient(app)
 
 
+def auth_headers():
+    response = client.post("/api/auth/login", json={"username": "prabal", "password": "eko-demo"})
+    assert response.status_code == 200
+    token = response.json()["token"]
+    return {"Authorization": "Bearer " + token}
+
+
 def analyze(summary: str, source: str = "support"):
     response = client.post(
         "/api/analyze",
+        headers=auth_headers(),
         json={
             "source": source,
             "summary": summary,
@@ -24,6 +32,21 @@ def test_health():
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_dashboard_requires_login():
+    response = client.get("/api/cases")
+    assert response.status_code == 401
+
+
+def test_login_and_logout():
+    response = client.post("/api/auth/login", json={"username": "prabal", "password": "eko-demo"})
+    assert response.status_code == 200
+    token = response.json()["token"]
+    headers = {"Authorization": "Bearer " + token}
+    assert client.get("/api/auth/me", headers=headers).status_code == 200
+    assert client.post("/api/auth/logout", headers=headers).status_code == 200
+    assert client.get("/api/auth/me", headers=headers).status_code == 401
 
 
 def test_payment_routes_to_payments_operations():
@@ -57,13 +80,17 @@ def test_invalid_input_is_rejected():
         "/api/analyze",
         json={"source": "support", "summary": "short"},
     )
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 def test_status_update_adds_audit_event():
     result = analyze("KYC document upload is blocked on the onboarding screen.")
     case_id = result["id"]
-    response = client.patch(f"/api/cases/{case_id}", json={"status": "escalated"})
+    response = client.patch(
+        f"/api/cases/{case_id}",
+        headers=auth_headers(),
+        json={"status": "escalated"},
+    )
     assert response.status_code == 200
     assert response.json()["status"] == "escalated"
     assert response.json()["audit"][-1]["event"] == "status_changed"

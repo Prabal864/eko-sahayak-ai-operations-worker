@@ -40,6 +40,15 @@ OpenRouter is used only to structure the redacted report; local safety rules
 override model output, and deterministic rules remain available as a fallback.
 Gemini remains supported by setting `AI_PROVIDER=gemini`. Never commit `.env`.
 
+### Login
+
+The dashboard requires a backend session. Copy `backend\.env.example` to
+`.env`, set `EKO_DEMO_USERNAME` and `EKO_DEMO_PASSWORD`, then sign in with
+those credentials. The default local demo credentials are `prabal` / `eko-demo`
+when the variables are not configured. Case, audit, and status APIs require a
+valid bearer session; health and login remain public. Use **Log out** in the
+header or sidebar to invalidate the backend session and clear the browser token.
+
 ### React frontend
 
 Node.js 20+ is required for the frontend:

@@ -2,12 +2,13 @@ import json
 import re
 import asyncio
 import os
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -43,6 +44,11 @@ class CaseStatus(BaseModel):
     status: Literal["new", "in_review", "resolved", "escalated"]
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
 class AiResolution(BaseModel):
     category: str
     priority: Literal["normal", "high", "urgent"]
@@ -56,6 +62,21 @@ class AiResolution(BaseModel):
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+DEMO_USERNAME = os.getenv("EKO_DEMO_USERNAME", "prabal")
+DEMO_PASSWORD = os.getenv("EKO_DEMO_PASSWORD", "eko-demo")
+sessions: dict[str, dict[str, str]] = {}
+
+
+def current_user(authorization: str | None = Header(default=None)) -> dict[str, str]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Login required")
+    token = authorization.split(" ", 1)[1].strip()
+    user = sessions.get(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+    return user
 
 
 def redact_local(text: str) -> str:
@@ -327,15 +348,40 @@ async def health():
     return {"status": "ok", "worker": "eko-sahayak", "mode": "local-demo"}
 
 
+@app.post("/api/auth/login")
+async def login(payload: LoginRequest):
+    if not (
+        secrets.compare_digest(payload.username, DEMO_USERNAME)
+        and secrets.compare_digest(payload.password, DEMO_PASSWORD)
+    ):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = secrets.token_urlsafe(32)
+    user = {"username": DEMO_USERNAME, "name": "Prabal Goswami", "role": "Field operations"}
+    sessions[token] = user
+    return {"token": token, "user": user}
+
+
+@app.get("/api/auth/me")
+async def me(user: dict[str, str] = Depends(current_user)):
+    return {"user": user}
+
+
+@app.post("/api/auth/logout")
+async def logout(authorization: str | None = Header(default=None)):
+    if authorization and authorization.lower().startswith("bearer "):
+        sessions.pop(authorization.split(" ", 1)[1].strip(), None)
+    return {"ok": True}
+
+
 @app.get("/api/cases")
-async def list_cases():
+async def list_cases(_: dict[str, str] = Depends(current_user)):
     return {"cases": cases, "summary": {"open": sum(c["status"] in ("new", "in_review", "escalated") for c in cases),
                                         "urgent": sum(c["priority"] == "urgent" for c in cases),
                                         "resolved": sum(c["status"] == "resolved" for c in cases)}}
 
 
 @app.post("/api/analyze")
-async def analyze(payload: CaseInput):
+async def analyze(payload: CaseInput, _: dict[str, str] = Depends(current_user)):
     provider_name = os.getenv("AI_PROVIDER", "openrouter").lower()
     if provider_name == "gemini":
         result, provider = await classify_with_gemini(payload)
@@ -347,7 +393,7 @@ async def analyze(payload: CaseInput):
 
 
 @app.patch("/api/cases/{case_id}")
-async def update_case(case_id: str, payload: CaseStatus):
+async def update_case(case_id: str, payload: CaseStatus, _: dict[str, str] = Depends(current_user)):
     for case in cases:
         if case["id"] == case_id:
             previous = case["status"]
@@ -358,5 +404,5 @@ async def update_case(case_id: str, payload: CaseStatus):
 
 
 @app.get("/api/audit")
-async def audit():
+async def audit(_: dict[str, str] = Depends(current_user)):
     return {"events": [{"case_id": c["id"], **event} for c in cases for event in c["audit"]]}

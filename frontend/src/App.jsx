@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
-const api = async (path, options) => {
-  const response = await fetch(path, options);
-  if (!response.ok) throw new Error((await response.json()).detail || "Request failed");
+const api = async (path, options = {}) => {
+  const token = localStorage.getItem("eko_session");
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(path, { ...options, headers });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const error = new Error(body.detail || "Request failed");
+    error.status = response.status;
+    throw error;
+  }
   return response.json();
 };
 
@@ -14,7 +22,7 @@ function Badge({ value }) {
   return <span className={`badge ${value}`}>{value.replace("_", " ")}</span>;
 }
 
-function Navigation({ view, setView }) {
+function Navigation({ view, setView, user, onLogout }) {
   return <aside className="sidebar">
     <div className="brand"><div className="brand-mark">e</div><div><strong>Eko Sahayak</strong><span>Operations worker</span></div></div>
     <nav aria-label="Main navigation">
@@ -23,13 +31,35 @@ function Navigation({ view, setView }) {
     </nav>
     <div className="sidebar-bottom">
       <div className="privacy-mini"><span className="dot" /><div><b>Local-first mode</b><small>PII stays on device</small></div></div>
-      <div className="profile"><div className="avatar">PG</div><div><b>Prabal Goswami</b><small>Field operations</small></div><span>•••</span></div>
+      <div className="profile"><div className="avatar">{initials(user.name)}</div><div><b>{user.name}</b><small>{user.role}</small></div><button className="logout-link" onClick={onLogout}>Log out</button></div>
     </div>
   </aside>;
 }
 
-function Header({ label }) {
-  return <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{label}</b></div><div className="top-actions"><button className="icon-btn" title="Notifications">♧<i /></button><button className="help-btn">?</button></div></header>;
+function Header({ label, user, onLogout }) {
+  return <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{label}</b></div><div className="top-actions"><span className="signed-in">Signed in as {user.username}</span><button className="icon-btn" title="Notifications">♧<i /></button><button className="help-btn">?</button><button className="header-logout" onClick={onLogout}>Log out</button></div></header>;
+}
+
+function Login({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      localStorage.setItem("eko_session", result.token);
+      onLogin(result.user);
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <main className="login-shell"><section className="login-panel"><div className="login-brand"><div className="brand-mark">e</div><div><strong>Eko Sahayak</strong><span>Operations worker</span></div></div><h1>Welcome back</h1><p>Sign in to review field operations and resolve cases safely.</p><form onSubmit={submit}><div className="field"><label htmlFor="username">Username</label><input id="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Enter username" required /></div><div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" required /></div>{error && <div className="form-error" role="alert">{error}</div>}<button className="primary login-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><div className="login-note"><span className="dot" /><span>Local demo access. Your session is kept on this device.</span></div></section></main>;
 }
 
 function Overview({ cases, summary, onNew, onOpen }) {
@@ -91,14 +121,35 @@ function Audit() {
 }
 
 export default function App() {
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [view, setView] = useState("overview");
   const [cases, setCases] = useState([]);
   const [summary, setSummary] = useState({ open: 0, urgent: 0, resolved: 0 });
   const [selected, setSelected] = useState(null);
   const refresh = () => api("/api/cases").then((data) => { setCases(data.cases); setSummary(data.summary); return data; });
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    const token = localStorage.getItem("eko_session");
+    if (!token) { setAuthChecked(true); return; }
+    api("/api/auth/me").then((data) => setUser(data.user)).catch(() => localStorage.removeItem("eko_session")).finally(() => setAuthChecked(true));
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    refresh().catch((error) => {
+      if (error.status === 401) handleLogout();
+    });
+  }, [user]);
+  const handleLogout = async () => {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch { /* Session cleanup still happens locally. */ }
+    localStorage.removeItem("eko_session");
+    setUser(null);
+    setSelected(null);
+    setView("overview");
+  };
+  if (!authChecked) return <main className="auth-loading">Checking your session…</main>;
+  if (!user) return <Login onLogin={setUser} />;
   const openCase = (id) => { setSelected(cases.find((item) => item.id === id)); setView("case"); };
   const content = view === "overview" ? <Overview cases={cases} summary={summary} onNew={() => setView("new-case")} onOpen={openCase} /> : view === "new-case" ? <NewCase onCreated={(item) => { setCases((current) => [item, ...current]); setSelected(item); setView("case"); }} /> : view === "audit" ? <Audit /> : selected ? <CaseDetail item={selected} onBack={() => setView("overview")} onUpdated={(updated) => { setCases((current) => current.map((item) => item.id === updated.id ? updated : item)); setSelected(updated); }} /> : null;
   const label = view === "case" && selected ? selected.id : view === "new-case" ? "New case" : view === "audit" ? "Audit trail" : "Operations desk";
-  return <><Navigation view={view} setView={setView} /><main className="main"><Header label={label} />{content}</main></>;
+  return <><Navigation view={view} setView={setView} user={user} onLogout={handleLogout} /><main className="main"><Header label={label} user={user} onLogout={handleLogout} />{content}</main></>;
 }

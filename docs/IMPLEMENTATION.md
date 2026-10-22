@@ -76,12 +76,21 @@ The prototype redacts common patterns for long numeric identifiers, ten-digit ph
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | GET | `/api/health` | Service health |
+| POST | `/api/auth/login` | Create a local demo session |
+| GET | `/api/auth/me` | Restore the signed-in user |
+| POST | `/api/auth/logout` | Invalidate the current session |
 | GET | `/api/cases` | Cases and summary counts |
 | POST | `/api/analyze` | Analyze and create a case |
 | PATCH | `/api/cases/{case_id}` | Update human workflow status |
 | GET | `/api/audit` | Retrieve audit events |
 
 Swagger documentation is available at `/docs`.
+
+Health and login are public. Case, analysis, status, and audit endpoints
+require the `Authorization: Bearer <session-token>` header. The current
+prototype stores sessions in memory for a local demonstration; production
+deployment should use an identity provider and durable, expiring server-side
+sessions.
 
 ## Provider Metadata
 
