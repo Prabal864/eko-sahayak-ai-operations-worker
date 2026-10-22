@@ -7,6 +7,7 @@ SQLite file otherwise, so the demo works without external infrastructure.
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -20,6 +21,14 @@ from sqlalchemy.types import JSON
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+logger = logging.getLogger("eko_sahayak.database")
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:
+    logger.warning("python-dotenv is not installed; using process environment only")
+
 default_db = PROJECT_ROOT / "data" / "eko_sahayak.db"
 default_db.parent.mkdir(exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_db}")
@@ -27,6 +36,9 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
+database_type = "postgresql" if DATABASE_URL.startswith("postgresql+psycopg://") else "sqlite"
+logger.info("Database configuration loaded: type=%s", database_type)
 
 engine = create_engine(
     DATABASE_URL,
@@ -113,8 +125,10 @@ def check_database_connection() -> dict[str, str | bool]:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         database_type = "postgresql" if engine.url.drivername == "postgresql+psycopg" else "sqlite"
+        logger.info("Database connection check succeeded: type=%s", database_type)
         return {"connected": True, "type": database_type, "detail": "Database query succeeded"}
     except Exception as error:
+        logger.exception("Database connection check failed: type=%s", engine.url.drivername)
         return {
             "connected": False,
             "type": engine.url.drivername,
@@ -123,24 +137,31 @@ def check_database_connection() -> dict[str, str | bool]:
 
 
 def init_db(seed_cases: list[dict[str, Any]], demo_username: str, demo_password: str) -> None:
-    Base.metadata.create_all(engine)
-    with SessionLocal.begin() as db:
-        user = db.scalar(select(User).where(User.username == demo_username))
-        if user is None:
-            user = User(username=demo_username, name="Prabal Goswami", role="Field operations",
-                        password_hash=password_hash(demo_password))
-            db.add(user)
-            db.flush()
-        if db.scalar(select(Case.id).where(Case.user_id == user.id)) is None:
-            for item in seed_cases:
-                db.add(Case(user_id=user.id, id=item["id"], status=item["status"], category=item["category"],
-                            priority=item["priority"], owner=item["owner"], root_cause=item["root_cause"],
-                            evidence=item["evidence"], next_action=item["next_action"], escalation=item["escalation"],
-                            confidence=item["confidence"], consent_to_share=item["consent_to_share"],
-                            created_at=datetime.fromisoformat(item["created_at"])))
-                for event in item.get("audit", []):
-                    db.add(AuditEvent(case_id=item["id"], user_id=user.id, event=event["event"],
-                                      detail=event["detail"], at=datetime.fromisoformat(event["at"])))
+    try:
+        Base.metadata.create_all(engine)
+        with SessionLocal.begin() as db:
+            user = db.scalar(select(User).where(User.username == demo_username))
+            if user is None:
+                user = User(username=demo_username, name="Prabal Goswami", role="Field operations",
+                            password_hash=password_hash(demo_password))
+                db.add(user)
+                db.flush()
+            if db.scalar(select(Case.id).where(Case.user_id == user.id)) is None:
+                for item in seed_cases:
+                    case = Case(user_id=user.id, id=item["id"], status=item["status"], category=item["category"],
+                                priority=item["priority"], owner=item["owner"], root_cause=item["root_cause"],
+                                evidence=item["evidence"], next_action=item["next_action"], escalation=item["escalation"],
+                                confidence=item["confidence"], consent_to_share=item["consent_to_share"],
+                                created_at=datetime.fromisoformat(item["created_at"]))
+                    db.add(case)
+                    db.flush()
+                    for event in item.get("audit", []):
+                        db.add(AuditEvent(case_id=item["id"], user_id=user.id, event=event["event"],
+                                          detail=event["detail"], at=datetime.fromisoformat(event["at"])))
+        logger.info("Database initialization succeeded: type=%s", database_type)
+    except Exception:
+        logger.exception("Database initialization failed: type=%s", database_type)
+        raise
 
 
 @contextmanager

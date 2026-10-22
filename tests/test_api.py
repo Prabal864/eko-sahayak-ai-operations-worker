@@ -1,14 +1,17 @@
 from fastapi.testclient import TestClient
 from uuid import uuid4
+import os
 
 from backend.main import app
 
 
 client = TestClient(app)
+TEST_USERNAME = os.getenv("EKO_DEMO_USERNAME", "prabal")
+TEST_PASSWORD = os.getenv("EKO_DEMO_PASSWORD", "eko-demo")
 
 
 def auth_headers():
-    response = client.post("/api/auth/login", json={"username": "prabal", "password": "eko-demo"})
+    response = client.post("/api/auth/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
     assert response.status_code == 200
     token = response.json()["token"]
     return {"Authorization": "Bearer " + token}
@@ -43,7 +46,7 @@ def test_dashboard_requires_login():
 
 
 def test_login_and_logout():
-    response = client.post("/api/auth/login", json={"username": "prabal", "password": "eko-demo"})
+    response = client.post("/api/auth/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
     assert response.status_code == 200
     token = response.json()["token"]
     headers = {"Authorization": "Bearer " + token}
@@ -68,7 +71,7 @@ def test_signup_creates_account_and_session():
 def test_signup_rejects_duplicate_username():
     response = client.post(
         "/api/auth/signup",
-        json={"name": "Duplicate", "username": "prabal", "password": "safe-demo-password"},
+        json={"name": "Duplicate", "username": TEST_USERNAME, "password": "safe-demo-password"},
     )
     assert response.status_code == 409
 
@@ -81,7 +84,8 @@ def test_voice_transcription_requires_login():
     assert response.status_code == 401
 
 
-def test_voice_transcription_reports_missing_provider_configuration():
+def test_voice_transcription_reports_missing_provider_configuration(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     response = client.post(
         "/api/voice/transcribe",
         headers=auth_headers(),

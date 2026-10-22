@@ -498,6 +498,7 @@ async def analyze(payload: CaseInput, user: dict[str, str] = Depends(current_use
                     evidence=result["evidence"], next_action=result["next_action"], escalation=result["escalation"],
                     confidence=result["confidence"], consent_to_share=result["consent_to_share"],
                     provider=provider, created_at=datetime.fromisoformat(result["created_at"])))
+        db.flush()
         for event in result["audit"]:
             db.add(AuditEvent(case_id=result["id"], user_id=user["id"], event=event["event"],
                               detail=event["detail"], at=datetime.fromisoformat(event["at"])))
