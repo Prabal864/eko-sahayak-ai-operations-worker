@@ -40,6 +40,21 @@ OpenRouter is used only to structure the redacted report; local safety rules
 override model output, and deterministic rules remain available as a fallback.
 Gemini remains supported by setting `AI_PROVIDER=gemini`. Never commit `.env`.
 
+### Docker backend
+
+Build from the repository root using the backend directory as the Docker
+context:
+
+```powershell
+docker build -f backend\Dockerfile -t eko-sahayak-backend backend
+docker run --rm -p 8000:8000 --env-file .env eko-sahayak-backend
+```
+
+The image runs as a non-root user and exposes port `8000`. The `.env` file is
+passed at runtime and is never copied into the image. For PostgreSQL, keep
+`DATABASE_URL` in the runtime environment and ensure the database accepts the
+container's network connection.
+
 ### Login
 
 The dashboard requires a backend session. Copy `backend\.env.example` to
