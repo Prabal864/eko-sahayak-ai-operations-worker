@@ -3,7 +3,6 @@ import re
 import asyncio
 import os
 import secrets
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -13,6 +12,12 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from .database import (
+    AuditEvent, Case, Session, User, db_session, hash_token, init_db,
+    password_hash, password_matches, SESSION_TTL, utc_now,
+)
 
 try:
     from dotenv import load_dotenv
@@ -73,40 +78,24 @@ def now_iso() -> str:
 
 DEMO_USERNAME = os.getenv("EKO_DEMO_USERNAME", "prabal")
 DEMO_PASSWORD = os.getenv("EKO_DEMO_PASSWORD", "eko-demo")
-users: dict[str, dict[str, str]] = {}
-sessions: dict[str, dict[str, str]] = {}
-
-
-def password_hash(password: str, salt: str | None = None) -> str:
-    salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
-    return f"{salt}${digest}"
-
-
-def password_matches(password: str, stored: str) -> bool:
-    salt, expected = stored.split("$", 1)
-    actual = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000).hex()
-    return secrets.compare_digest(actual, expected)
-
-
-def seed_demo_user() -> None:
-    if DEMO_USERNAME not in users:
-        users[DEMO_USERNAME] = {
-            "name": "Prabal Goswami",
-            "username": DEMO_USERNAME,
-            "role": "Field operations",
-            "password_hash": password_hash(DEMO_PASSWORD),
-        }
+def public_user(user: User) -> dict[str, str]:
+    return {"id": user.id, "name": user.name, "username": user.username, "role": user.role}
 
 
 def current_user(authorization: str | None = Header(default=None)) -> dict[str, str]:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Login required")
     token = authorization.split(" ", 1)[1].strip()
-    user = sessions.get(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
-    return user
+    with db_session() as db:
+        session = db.scalar(select(Session).where(Session.token_hash == hash_token(token)))
+        if not session or session.expires_at.replace(tzinfo=timezone.utc) <= utc_now():
+            if session:
+                db.delete(session)
+            raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+        user = db.get(User, session.user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="Login required")
+        return public_user(user)
 
 
 def redact_local(text: str) -> str:
@@ -355,7 +344,25 @@ SEED_CASES = [
 ]
 
 
-cases = list(SEED_CASES)
+init_db(SEED_CASES, DEMO_USERNAME, DEMO_PASSWORD)
+
+
+def case_dict(db, case: Case) -> dict:
+    events = db.scalars(select(AuditEvent).where(AuditEvent.case_id == case.id).order_by(AuditEvent.id)).all()
+    return {
+        "id": case.id, "status": case.status, "category": case.category, "priority": case.priority,
+        "owner": case.owner, "root_cause": case.root_cause, "evidence": case.evidence,
+        "next_action": case.next_action, "escalation": case.escalation, "confidence": case.confidence,
+        "consent_to_share": case.consent_to_share, "created_at": case.created_at.isoformat(),
+        **({"provider": case.provider} if case.provider else {}),
+        "audit": [{"event": event.event, "detail": event.detail, "at": event.at.isoformat()} for event in events],
+    }
+
+
+def create_session(db, user: User) -> tuple[str, dict[str, str]]:
+    token = secrets.token_urlsafe(32)
+    db.add(Session(token_hash=hash_token(token), user_id=user.id, expires_at=utc_now() + SESSION_TTL))
+    return token, public_user(user)
 
 
 @app.get("/")
@@ -380,33 +387,26 @@ async def health():
 
 @app.post("/api/auth/login")
 async def login(payload: LoginRequest):
-    seed_demo_user()
-    user = users.get(payload.username)
-    if not user or not password_matches(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = secrets.token_urlsafe(32)
-    public_user = {key: value for key, value in user.items() if key != "password_hash"}
-    sessions[token] = public_user
-    return {"token": token, "user": public_user}
+    with db_session() as db:
+        user = db.scalar(select(User).where(User.username == payload.username.lower()))
+        if not user or not password_matches(payload.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+        token, user_data = create_session(db, user)
+        return {"token": token, "user": user_data}
 
 
 @app.post("/api/auth/signup")
 async def signup(payload: SignupRequest):
-    seed_demo_user()
     username = payload.username.lower()
-    if username in users:
-        raise HTTPException(status_code=409, detail="Username already exists")
-    user = {
-        "name": payload.name.strip(),
-        "username": username,
-        "role": "Field operations",
-        "password_hash": password_hash(payload.password),
-    }
-    users[username] = user
-    token = secrets.token_urlsafe(32)
-    public_user = {key: value for key, value in user.items() if key != "password_hash"}
-    sessions[token] = public_user
-    return {"token": token, "user": public_user}
+    with db_session() as db:
+        if db.scalar(select(User).where(User.username == username)):
+            raise HTTPException(status_code=409, detail="Username already exists")
+        user = User(name=payload.name.strip(), username=username, role="Field operations",
+                    password_hash=password_hash(payload.password))
+        db.add(user)
+        db.flush()
+        token, user_data = create_session(db, user)
+        return {"token": token, "user": user_data}
 
 
 @app.get("/api/auth/me")
@@ -417,7 +417,12 @@ async def me(user: dict[str, str] = Depends(current_user)):
 @app.post("/api/auth/logout")
 async def logout(authorization: str | None = Header(default=None)):
     if authorization and authorization.lower().startswith("bearer "):
-        sessions.pop(authorization.split(" ", 1)[1].strip(), None)
+        with db_session() as db:
+            session = db.scalar(select(Session).where(
+                Session.token_hash == hash_token(authorization.split(" ", 1)[1].strip())
+            ))
+            if session:
+                db.delete(session)
     return {"ok": True}
 
 
@@ -463,35 +468,53 @@ async def transcribe_voice(
 
 
 @app.get("/api/cases")
-async def list_cases(_: dict[str, str] = Depends(current_user)):
-    return {"cases": cases, "summary": {"open": sum(c["status"] in ("new", "in_review", "escalated") for c in cases),
-                                        "urgent": sum(c["priority"] == "urgent" for c in cases),
-                                        "resolved": sum(c["status"] == "resolved" for c in cases)}}
+async def list_cases(user: dict[str, str] = Depends(current_user)):
+    with db_session() as db:
+        rows = db.scalars(select(Case).where(Case.user_id == user["id"]).order_by(Case.created_at.desc())).all()
+        cases = [case_dict(db, case) for case in rows]
+        return {"cases": cases, "summary": {"open": sum(c["status"] in ("new", "in_review", "escalated") for c in cases),
+                                            "urgent": sum(c["priority"] == "urgent" for c in cases),
+                                            "resolved": sum(c["status"] == "resolved" for c in cases)}}
 
 
 @app.post("/api/analyze")
-async def analyze(payload: CaseInput, _: dict[str, str] = Depends(current_user)):
+async def analyze(payload: CaseInput, user: dict[str, str] = Depends(current_user)):
     provider_name = os.getenv("AI_PROVIDER", "openrouter").lower()
     if provider_name == "gemini":
         result, provider = await classify_with_gemini(payload)
     else:
         result, provider = await classify_with_openrouter(payload)
     result["provider"] = provider
-    cases.insert(0, result)
-    return result
+    with db_session() as db:
+        db.add(Case(id=result["id"], user_id=user["id"], status=result["status"], category=result["category"],
+                    priority=result["priority"], owner=result["owner"], root_cause=result["root_cause"],
+                    evidence=result["evidence"], next_action=result["next_action"], escalation=result["escalation"],
+                    confidence=result["confidence"], consent_to_share=result["consent_to_share"],
+                    provider=provider, created_at=datetime.fromisoformat(result["created_at"])))
+        for event in result["audit"]:
+            db.add(AuditEvent(case_id=result["id"], user_id=user["id"], event=event["event"],
+                              detail=event["detail"], at=datetime.fromisoformat(event["at"])))
+        db.flush()
+        return case_dict(db, db.get(Case, result["id"]))
 
 
 @app.patch("/api/cases/{case_id}")
-async def update_case(case_id: str, payload: CaseStatus, _: dict[str, str] = Depends(current_user)):
-    for case in cases:
-        if case["id"] == case_id:
-            previous = case["status"]
-            case["status"] = payload.status
-            case["audit"].append({"event": "status_changed", "detail": f"{previous} → {payload.status}", "at": now_iso()})
-            return case
-    raise HTTPException(status_code=404, detail="Case not found")
+async def update_case(case_id: str, payload: CaseStatus, user: dict[str, str] = Depends(current_user)):
+    with db_session() as db:
+        case = db.scalar(select(Case).where(Case.id == case_id, Case.user_id == user["id"]))
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        previous = case.status
+        case.status = payload.status
+        db.add(AuditEvent(case_id=case.id, user_id=user["id"], event="status_changed",
+                          detail=f"{previous} → {payload.status}", at=utc_now()))
+        db.flush()
+        return case_dict(db, case)
 
 
 @app.get("/api/audit")
-async def audit(_: dict[str, str] = Depends(current_user)):
-    return {"events": [{"case_id": c["id"], **event} for c in cases for event in c["audit"]]}
+async def audit(user: dict[str, str] = Depends(current_user)):
+    with db_session() as db:
+        events = db.scalars(select(AuditEvent).where(AuditEvent.user_id == user["id"]).order_by(AuditEvent.id)).all()
+        return {"events": [{"case_id": event.case_id, "event": event.event, "detail": event.detail,
+                            "at": event.at.isoformat()} for event in events]}

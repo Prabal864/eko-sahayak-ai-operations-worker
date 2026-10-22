@@ -30,7 +30,7 @@ Human review and status transition
 | OpenRouter | Optional AI language understanding |
 | Local classifier | Explainable fallback and policy enforcement |
 | Pydantic | Typed request and AI response validation |
-| In-memory store | Prototype case and audit state |
+| SQLAlchemy store | Users, expiring sessions, owned cases, and audit events |
 
 ## Workflow States
 
@@ -68,4 +68,6 @@ Low confidence     → Needs clarification → Human follow-up
 
 ## State Strategy
 
-The prototype uses an in-memory list. This keeps the demo lightweight but resets data on restart. The production state store should be SQLite first, with tables for cases, events, consent, feedback, and evaluation runs.
+SQLAlchemy persists users, cases, and audit events. SQLite is the zero-configuration
+fallback (`data\eko_sahayak.db`); deployments can set `DATABASE_URL` to PostgreSQL.
+The demo user receives seeded cases only during first database initialization.

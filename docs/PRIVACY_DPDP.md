@@ -27,7 +27,7 @@ Only a redacted operational report is sent to the configured AI provider. The mo
 
 ## Retention
 
-The prototype keeps state in memory for the demo. A production implementation must define:
+The prototype persists state locally with SQLAlchemy. A production implementation must define:
 
 - Maximum retention duration
 - Automated deletion

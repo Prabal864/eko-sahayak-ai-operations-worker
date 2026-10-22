@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 *.log
+*.db
+data/
 .idea/
 .venv/
 frontend/node_modules/

@@ -50,8 +50,11 @@ valid bearer session; health and login remain public. Use **Log out** in the
 header or sidebar to invalidate the backend session and clear the browser token.
 New operators can use **Sign up** on the login screen. Signup validates the
 username and password, hashes the password before storing it, creates a local
-session, and opens the dashboard immediately. Accounts are stored in memory in
-this demo and are lost when the backend restarts.
+session, and opens the dashboard immediately. Accounts, sessions, cases,
+and audit events are now persisted with SQLAlchemy. Without `DATABASE_URL`, the
+app uses `data\eko_sahayak.db` (SQLite); set `DATABASE_URL` to a PostgreSQL URL
+for PostgreSQL deployments. Passwords are PBKDF2-hashed, bearer tokens are
+stored only as SHA-256 hashes, and sessions expire after 12 hours.
 
 ### Voice input
 

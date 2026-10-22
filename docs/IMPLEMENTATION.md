@@ -90,9 +90,9 @@ Swagger documentation is available at `/docs`.
 
 Health and login are public. Case, analysis, status, and audit endpoints
 require the `Authorization: Bearer <session-token>` header. The current
-prototype stores sessions in memory for a local demonstration; production
-deployment should use an identity provider and durable, expiring server-side
-sessions.
+SQLAlchemy stores users, cases, and audit events, while only a SHA-256 hash of
+each bearer token is persisted. Sessions expire after 12 hours; production
+deployment should use an identity provider and durable server-side sessions.
 
 ## Voice input
 
