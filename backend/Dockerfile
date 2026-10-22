@@ -2,12 +2,15 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-COPY requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+COPY requirements-runtime.txt /app/backend/requirements-runtime.txt
+RUN python -m pip install --no-cache-dir --no-compile \
+    -r /app/backend/requirements-runtime.txt \
+    && rm -rf /root/.cache
 
 COPY . /app/backend
 

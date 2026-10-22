@@ -53,7 +53,8 @@ docker run --rm -p 8000:8000 --env-file .env eko-sahayak-backend
 The image runs as a non-root user and exposes port `8000`. The `.env` file is
 passed at runtime and is never copied into the image. For PostgreSQL, keep
 `DATABASE_URL` in the runtime environment and ensure the database accepts the
-container's network connection.
+container's network connection. The image uses `requirements-runtime.txt`, so
+test dependencies are not installed in production.
 
 ### Login
 
