@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -419,6 +419,47 @@ async def logout(authorization: str | None = Header(default=None)):
     if authorization and authorization.lower().startswith("bearer "):
         sessions.pop(authorization.split(" ", 1)[1].strip(), None)
     return {"ok": True}
+
+
+@app.post("/api/voice/transcribe")
+async def transcribe_voice(
+    audio: UploadFile = File(...),
+    _: dict[str, str] = Depends(current_user),
+):
+    """Transcribe a recorded voice note through Gemini when configured."""
+    if audio.content_type not in {"audio/webm", "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg"}:
+        raise HTTPException(status_code=415, detail="Unsupported audio format")
+    audio_bytes = await audio.read()
+    if not audio_bytes or len(audio_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio must be between 1 byte and 10 MB")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Server transcription is not configured. Use browser transcription or configure GEMINI_API_KEY.",
+        )
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            "Transcribe this field operations voice note exactly. Return only the "
+            "transcript text, preserving the speaker's language. Do not add explanations."
+        )
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=os.getenv("GEMINI_TRANSCRIPTION_MODEL", "gemini-2.5-flash"),
+            contents=[prompt, types.Part.from_bytes(data=audio_bytes, mime_type=audio.content_type)],
+        )
+        transcript = (response.text or "").strip()
+        if len(transcript) < 8:
+            raise ValueError("empty transcription")
+        return {"transcript": transcript, "provider": "gemini"}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Voice transcription failed: {type(error).__name__}")
 
 
 @app.get("/api/cases")

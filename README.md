@@ -53,6 +53,16 @@ username and password, hashes the password before storing it, creates a local
 session, and opens the dashboard immediately. Accounts are stored in memory in
 this demo and are lost when the backend restarts.
 
+### Voice input
+
+On **New case**, choose **Add voice note**, allow microphone access, speak the
+operational update, and select **Stop recording**. Supported browsers add a
+local browser transcript immediately. The recorded audio is also sent to the
+authenticated backend for Gemini transcription when `GEMINI_API_KEY` is
+configured. If server transcription is unavailable, the browser transcript
+or typed note can still be analyzed. Use synthetic data only and never speak
+OTPs, PINs, passwords, full account numbers, or unnecessary personal details.
+
 ### React frontend
 
 Node.js 20+ is required for the frontend:

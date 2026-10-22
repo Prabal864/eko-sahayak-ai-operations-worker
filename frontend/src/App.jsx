@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const api = async (path, options = {}) => {
   const token = localStorage.getItem("eko_session");
@@ -103,6 +103,74 @@ function NewCase({ onCreated }) {
   const [language, setLanguage] = useState("English");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const recognitionRef = useRef(null);
+  const browserTranscriptRef = useRef(false);
+  const startVoice = async () => {
+    setVoiceStatus("");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = language === "Hindi" ? "hi-IN" : "en-IN";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        browserTranscriptRef.current = true;
+        setSummary((current) => current ? `${current} ${transcript}` : transcript);
+        setVoiceStatus("Transcript added from browser speech recognition.");
+      };
+      recognition.onerror = () => setVoiceStatus("Browser transcription was unavailable; the audio recording was kept for server transcription.");
+      recognitionRef.current = recognition;
+      recognition.start();
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      if (!SpeechRecognition) setVoiceStatus("This browser does not support microphone recording. Type the note instead.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setVoiceStatus("Microphone permission was not granted. You can type the note instead.");
+      return;
+    }
+    const recorder = new MediaRecorder(stream);
+    browserTranscriptRef.current = false;
+    chunksRef.current = [];
+    recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      if (browserTranscriptRef.current) return;
+      if (!consent) {
+        setVoiceStatus("Audio stayed on this device because sharing consent is disabled.");
+        return;
+      }
+      const form = new FormData();
+      form.append("audio", blob, "voice-note.webm");
+      try {
+        const result = await api("/api/voice/transcribe", { method: "POST", body: form });
+        setSummary((current) => current ? `${current} ${result.transcript}` : result.transcript);
+        setVoiceStatus("Server transcription added.");
+      } catch (error) {
+        if (!recognitionRef.current) setVoiceStatus(error.message);
+      }
+    };
+    recorderRef.current = recorder;
+    recorder.start();
+    setRecording(true);
+    setVoiceStatus("Listening… speak the operational update, then stop.");
+  };
+  const stopVoice = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    setRecording(false);
+  };
   const submit = async (event) => {
     event.preventDefault();
     if (summary.trim().length < 8) return;
@@ -111,7 +179,7 @@ function NewCase({ onCreated }) {
     catch (error) { window.alert(error.message); } finally { setBusy(false); }
   };
   return <div className="page"><div className="page-head"><div><h1>Log a new case</h1><p>Capture the situation in the entrepreneur’s own words. Sahayak will structure the next safe action.</p></div></div>
-    <div className="form-grid"><form className="form-panel" onSubmit={submit}><h2>What happened?</h2><p>Keep it short and factual. Do not include OTPs, PINs, full account numbers, or unnecessary identity details.</p><div className="field"><label htmlFor="summary">Field note or support issue</label><textarea id="summary" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Example: Ramesh says money was debited but the retailer settlement has not arrived since yesterday..." /></div><div className="field"><label>Input source</label><div className="source-row">{["voice_note", "support", "field_visit", "activity_log"].map((item) => <button type="button" className={`source ${source === item ? "selected" : ""}`} onClick={() => setSource(item)} key={item}>{item.replace("_", " ")}</button>)}</div></div><div className="field"><label htmlFor="language">Preferred language</label><select id="language" value={language} onChange={(event) => setLanguage(event.target.value)}><option>English</option><option>Hindi</option><option>Hinglish</option></select></div><label className="consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> I have explicit consent to share a non-identifying summary with Eko for operational follow-up.</label><button className="primary" disabled={busy}>{busy ? "Structuring note…" : "Analyze & create case"}</button></form>
+    <div className="form-grid"><form className="form-panel" onSubmit={submit}><h2>What happened?</h2><p>Keep it short and factual. Do not include OTPs, PINs, full account numbers, or unnecessary identity details.</p><div className="field"><label htmlFor="summary">Field note or support issue</label><textarea id="summary" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Example: Ramesh says money was debited but the retailer settlement has not arrived since yesterday..." /><div className="voice-controls"><button type="button" className={`voice-button ${recording ? "recording" : ""}`} onClick={recording ? stopVoice : startVoice}>{recording ? "■ Stop recording" : "● Add voice note"}</button><span className="voice-status">{voiceStatus}</span></div></div><div className="field"><label>Input source</label><div className="source-row">{["voice_note", "support", "field_visit", "activity_log"].map((item) => <button type="button" className={`source ${source === item ? "selected" : ""}`} onClick={() => setSource(item)} key={item}>{item.replace("_", " ")}</button>)}</div></div><div className="field"><label htmlFor="language">Preferred language</label><select id="language" value={language} onChange={(event) => setLanguage(event.target.value)}><option>English</option><option>Hindi</option><option>Hinglish</option></select></div><label className="consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> I have explicit consent to share a non-identifying summary with Eko for operational follow-up.</label><button className="primary" disabled={busy}>{busy ? "Structuring note…" : "Analyze & create case"}</button></form>
       <aside className="form-panel"><h2>Privacy guardrails</h2><p>Designed for a shared phone or low-end laptop in a real field setting.</p><div className="privacy-note">✓ Raw notes stay local in this demo<br />✓ Analysis uses explainable rules<br />✓ Share only a redacted summary with consent<br />✓ Human review for money movement and safety</div><div className="result-block"><label>Workflow states</label><p>New → In review → Resolved<br />                     ↘ Escalated</p></div><div className="result-block"><label>Definition of done</label><p>A clear owner, next action, evidence trail, and a human handoff when confidence or risk is low.</p></div></aside>
     </div></div>;
 }

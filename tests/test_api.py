@@ -70,6 +70,23 @@ def test_signup_rejects_duplicate_username():
     assert response.status_code == 409
 
 
+def test_voice_transcription_requires_login():
+    response = client.post(
+        "/api/voice/transcribe",
+        files={"audio": ("voice.webm", b"audio", "audio/webm")},
+    )
+    assert response.status_code == 401
+
+
+def test_voice_transcription_reports_missing_provider_configuration():
+    response = client.post(
+        "/api/voice/transcribe",
+        headers=auth_headers(),
+        files={"audio": ("voice.webm", b"audio", "audio/webm")},
+    )
+    assert response.status_code == 503
+
+
 def test_payment_routes_to_payments_operations():
     result = analyze("Settlement is missing after a successful customer payment.")
     assert result["category"] == "Settlement / payout"
