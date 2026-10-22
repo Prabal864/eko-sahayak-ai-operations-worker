@@ -17,6 +17,7 @@ from sqlalchemy import select
 from .database import (
     AuditEvent, Case, Session, User, db_session, hash_token, init_db,
     password_hash, password_matches, SESSION_TTL, utc_now,
+    check_database_connection,
 )
 
 try:
@@ -382,7 +383,13 @@ async def react_asset(asset_path: str):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "worker": "eko-sahayak", "mode": "local-demo"}
+    database = check_database_connection()
+    return {
+        "status": "ok" if database["connected"] else "degraded",
+        "worker": "eko-sahayak",
+        "mode": "local-demo",
+        "database": database,
+    }
 
 
 @app.post("/api/auth/login")

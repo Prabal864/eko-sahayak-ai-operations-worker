@@ -108,6 +108,12 @@ and human review as typed cases.
 
 ## Provider Metadata
 
+## Database connectivity check
+
+`GET /api/health` calls `check_database_connection()` and runs `SELECT 1`
+against the configured SQLAlchemy engine. It returns `connected`, the database
+type, and a safe diagnostic message without exposing the connection URL.
+
 Every analyzed case records one of:
 
 - `openrouter`

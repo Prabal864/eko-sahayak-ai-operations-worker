@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from backend.main import app
 
@@ -32,6 +33,8 @@ def test_health():
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["database"]["connected"] is True
+    assert response.json()["database"]["type"] in {"sqlite", "postgresql"}
 
 
 def test_dashboard_requires_login():
@@ -50,7 +53,7 @@ def test_login_and_logout():
 
 
 def test_signup_creates_account_and_session():
-    username = "new_operator"
+    username = f"new_operator_{uuid4().hex[:8]}"
     response = client.post(
         "/api/auth/signup",
         json={"name": "New Operator", "username": username, "password": "safe-demo-password"},

@@ -13,7 +13,7 @@ import secrets
 from typing import Any, Iterator
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, create_engine, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import JSON
@@ -105,6 +105,21 @@ def hash_token(token: str) -> str:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def check_database_connection() -> dict[str, str | bool]:
+    """Run a lightweight database query and report connectivity safely."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        database_type = "postgresql" if engine.url.drivername == "postgresql+psycopg" else "sqlite"
+        return {"connected": True, "type": database_type, "detail": "Database query succeeded"}
+    except Exception as error:
+        return {
+            "connected": False,
+            "type": engine.url.drivername,
+            "detail": f"Database query failed: {type(error).__name__}",
+        }
 
 
 def init_db(seed_cases: list[dict[str, Any]], demo_username: str, demo_password: str) -> None:
