@@ -1,0 +1,21 @@
+# Eko Sahayak API smoke requests
+
+GET http://127.0.0.1:8000/
+Accept: text/html
+
+###
+
+GET http://127.0.0.1:8000/api/health
+Accept: application/json
+
+###
+
+POST http://127.0.0.1:8000/api/analyze
+Content-Type: application/json
+
+{
+  "source": "support",
+  "summary": "Money was debited but the payout is missing since yesterday",
+  "language": "English",
+  "consent_to_share": false
+}
