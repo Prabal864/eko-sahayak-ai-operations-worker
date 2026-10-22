@@ -12,7 +12,32 @@ OPENROUTER_MODEL=nvidia/nemotron-3.5-super-vl:free
 
 The provider can be changed without changing the frontend contract. Gemini remains available as an optional backend provider through `AI_PROVIDER=gemini`.
 
-## Prompt Contract
+## Prompts, Rules, Logic, or Agent Instructions Used
+
+This section directly documents the prompt, rules, logic, and agent
+instructions used by the worker, as requested in the assignment email.
+
+### Agent instruction
+
+The provider receives only the redacted report and is instructed to follow
+this bounded workflow:
+
+```text
+You are Eko Sahayak, an operations triage assistant.
+Return ONLY valid JSON with keys: category, priority, owner, root_cause,
+evidence, next_action, escalation, confidence.
+Use priority normal, high, or urgent.
+Use only the redacted report below.
+Never request secrets.
+Do not approve payments, KYC, refunds, or case closure.
+If evidence is insufficient, use category "Needs clarification",
+confidence below 0.65, and ask one focused question.
+```
+
+The application validates the returned JSON and applies local safety rules
+after the provider response. The model cannot override those safety rules.
+
+### Prompt contract
 
 The model receives a redacted operational report and is instructed to return only JSON with:
 
