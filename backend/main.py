@@ -33,7 +33,11 @@ FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 app = FastAPI(title="Eko Sahayak", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://eko-sahayak-ai.netlify.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
