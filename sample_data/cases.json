@@ -1,0 +1,32 @@
+[
+  {
+    "id": "sample-payment",
+    "source": "support",
+    "summary": "A customer payment succeeded but the settlement is not visible in the entrepreneur balance.",
+    "language": "English",
+    "consent_to_share": false,
+    "expected_category": "Payment / settlement",
+    "expected_owner": "Payments Operations",
+    "expected_priority": "high"
+  },
+  {
+    "id": "sample-fraud",
+    "source": "voice_note",
+    "summary": "The entrepreneur shared an OTP and now sees money missing from the account.",
+    "language": "Hinglish",
+    "consent_to_share": false,
+    "expected_category": "Safety / fraud risk",
+    "expected_owner": "Trust & Safety",
+    "expected_priority": "urgent"
+  },
+  {
+    "id": "sample-clarification",
+    "source": "field_visit",
+    "summary": "The onboarding process is confusing and the next step is unclear.",
+    "language": "English",
+    "consent_to_share": false,
+    "expected_category": "Needs clarification",
+    "expected_owner": "Field Operations",
+    "expected_priority": "normal"
+  }
+]

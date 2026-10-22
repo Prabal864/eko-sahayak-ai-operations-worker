@@ -1,0 +1,12 @@
+{
+  "acceptance_rules": [
+    "Every accepted case has an id, workflow status, owner, priority, next action, escalation, confidence, and audit trail.",
+    "Fraud, OTP, PIN, password, or missing-money signals are urgent and owned by Trust & Safety.",
+    "Incomplete reports remain in_review and ask for clarification instead of inventing evidence.",
+    "Consent is false by default and redacted text is used for external AI processing."
+  ],
+  "intentional_failure": {
+    "input": "It is not working.",
+    "expected": "The worker must not guess a root cause; it returns Needs clarification with low confidence and a specific follow-up question."
+  }
+}
