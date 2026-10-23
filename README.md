@@ -69,6 +69,18 @@ Fallback requests log `AI request failed` or `AI provider unavailable`, and
 the response contains `"provider": "local_rules_fallback"` or
 `"provider": "local_rules_no_key"`.
 
+The health endpoint explicitly checks both dependencies without sending a user
+report to the AI provider:
+
+```bash
+curl -s https://api.prabalsingh.dev/eko/health | jq
+```
+
+Check that both `database.connected` and `ai.connected` are `true`. The AI
+check validates the configured provider credentials and reaches its models
+endpoint; a real analysis request still confirms the configured model can
+return validated JSON.
+
 ### Docker Compose on the server
 
 Copy the repository and the private root `.env` file to the server, then run

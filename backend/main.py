@@ -420,14 +420,82 @@ async def react_asset(asset_path: str):
     return FileResponse(asset)
 
 
+async def check_ai_connection() -> dict[str, str | bool]:
+    """Verify provider credentials and reachability without sending user data."""
+    provider = os.getenv("AI_PROVIDER", "openrouter").lower()
+    model = os.getenv(
+        "GEMINI_MODEL" if provider == "gemini" else "OPENROUTER_MODEL",
+        "gemini-3.8-flash" if provider == "gemini" else "nvidia/nemotron-3.5-super-vl:free",
+    )
+    api_key_name = "GEMINI_API_KEY" if provider == "gemini" else "OPENROUTER_API_KEY"
+    api_key = os.getenv(api_key_name)
+    if not api_key:
+        ai_logger.warning("AI connectivity check failed: provider=%s reason=missing_api_key", provider)
+        return {
+            "configured": False,
+            "connected": False,
+            "provider": provider,
+            "model": model,
+            "detail": f"{api_key_name} is not configured",
+        }
+    try:
+        import httpx
+
+        if provider == "gemini":
+            url = "https://generativelanguage.googleapis.com/v1beta/models"
+            headers = {}
+            params = {"key": api_key}
+        elif provider == "openrouter":
+            url = "https://openrouter.ai/api/v1/models"
+            headers = {"Authorization": f"Bearer {api_key}"}
+            params = {}
+        else:
+            return {
+                "configured": True,
+                "connected": False,
+                "provider": provider,
+                "model": model,
+                "detail": "Unsupported AI provider",
+            }
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        ai_logger.info("AI connectivity check succeeded: provider=%s model=%s", provider, model)
+        return {
+            "configured": True,
+            "connected": True,
+            "provider": provider,
+            "model": model,
+            "detail": "Provider credentials and endpoint are reachable",
+        }
+    except Exception as error:
+        status_code = getattr(getattr(error, "response", None), "status_code", "none")
+        ai_logger.exception(
+            "AI connectivity check failed: provider=%s model=%s status=%s error=%s",
+            provider,
+            model,
+            status_code,
+            type(error).__name__,
+        )
+        return {
+            "configured": True,
+            "connected": False,
+            "provider": provider,
+            "model": model,
+            "detail": f"Provider check failed: {type(error).__name__}",
+        }
+
+
 @app.get("/eko/health")
 async def health():
     database = check_database_connection()
+    ai = await check_ai_connection()
     return {
         "status": "ok" if database["connected"] else "degraded",
         "worker": "eko-sahayak",
         "mode": "local-demo",
         "database": database,
+        "ai": ai,
     }
 
 
