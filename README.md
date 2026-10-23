@@ -81,6 +81,11 @@ check validates the configured provider credentials and reaches its models
 endpoint; a real analysis request still confirms the configured model can
 return validated JSON.
 
+Cases can be archived from the case detail view. Archiving removes the case
+from the active queue but retains it and its audit history in the database.
+Permanent deletion is intentionally restricted until administrator roles and
+retention controls are added.
+
 ### Docker Compose on the server
 
 Copy the repository and the private root `.env` file to the server, then run

@@ -55,7 +55,7 @@ class CaseInput(BaseModel):
 
 
 class CaseStatus(BaseModel):
-    status: Literal["new", "in_review", "resolved", "escalated"]
+    status: Literal["new", "in_review", "resolved", "escalated", "archived"]
 
 
 class LoginRequest(BaseModel):
@@ -584,7 +584,11 @@ async def transcribe_voice(
 @app.get("/eko/cases")
 async def list_cases(user: dict[str, str] = Depends(current_user)):
     with db_session() as db:
-        rows = db.scalars(select(Case).where(Case.user_id == user["id"]).order_by(Case.created_at.desc())).all()
+        rows = db.scalars(
+            select(Case)
+            .where(Case.user_id == user["id"], Case.status != "archived")
+            .order_by(Case.created_at.desc())
+        ).all()
         cases = [case_dict(db, case) for case in rows]
         return {"cases": cases, "summary": {"open": sum(c["status"] in ("new", "in_review", "escalated") for c in cases),
                                             "urgent": sum(c["priority"] == "urgent" for c in cases),
@@ -624,6 +628,26 @@ async def update_case(case_id: str, payload: CaseStatus, user: dict[str, str] = 
         case.status = payload.status
         db.add(AuditEvent(case_id=case.id, user_id=user["id"], event="status_changed",
                           detail=f"{previous} → {payload.status}", at=utc_now()))
+        db.flush()
+        return case_dict(db, case)
+
+
+@app.post("/eko/cases/{case_id}/archive")
+async def archive_case(case_id: str, user: dict[str, str] = Depends(current_user)):
+    with db_session() as db:
+        case = db.scalar(select(Case).where(Case.id == case_id, Case.user_id == user["id"]))
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        if case.status == "archived":
+            return case_dict(db, case)
+        case.status = "archived"
+        db.add(AuditEvent(
+            case_id=case.id,
+            user_id=user["id"],
+            event="case_archived",
+            detail="Case archived by the operator; retained for auditability.",
+            at=utc_now(),
+        ))
         db.flush()
         return case_dict(db, case)
 

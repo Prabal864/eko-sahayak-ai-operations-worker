@@ -84,6 +84,7 @@ The prototype redacts common patterns for long numeric identifiers, ten-digit ph
 | GET | `/eko/cases` | Cases and summary counts |
 | POST | `/eko/analyze` | Analyze and create a case |
 | PATCH | `/eko/cases/{case_id}` | Update human workflow status |
+| POST | `/eko/cases/{case_id}/archive` | Archive a case while retaining its audit history |
 | GET | `/eko/audit` | Retrieve audit events |
 
 Swagger documentation is available at `/docs`.

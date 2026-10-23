@@ -139,3 +139,16 @@ def test_status_update_adds_audit_event():
     assert response.status_code == 200
     assert response.json()["status"] == "escalated"
     assert response.json()["audit"][-1]["event"] == "status_changed"
+
+
+def test_archive_case_removes_it_from_active_workflow():
+    result = analyze("A field visit found that the merchant needs a follow-up call.")
+    response = client.post(
+        f"/eko/cases/{result['id']}/archive",
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "archived"
+    assert response.json()["audit"][-1]["event"] == "case_archived"
+    cases = client.get("/eko/cases", headers=auth_headers()).json()["cases"]
+    assert all(case["id"] != result["id"] for case in cases)
