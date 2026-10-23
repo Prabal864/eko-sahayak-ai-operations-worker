@@ -56,6 +56,25 @@ passed at runtime and is never copied into the image. For PostgreSQL, keep
 container's network connection. The image uses `requirements-runtime.txt`, so
 test dependencies are not installed in production.
 
+### Docker Compose on the server
+
+Copy the repository and the private root `.env` file to the server, then run
+from the repository root:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f eko-sahayak-backend
+```
+
+The compose service binds FastAPI to `127.0.0.1:8000`, so it is reachable by
+Nginx but is not exposed directly to the public internet. Nginx should proxy
+`/eko/` to `http://127.0.0.1:8000`. Check the service through the domain with:
+
+```bash
+curl -i https://api.prabalsingh.dev/eko/health
+```
+
 ### Login
 
 The dashboard requires a backend session. Copy `backend\.env.example` to
