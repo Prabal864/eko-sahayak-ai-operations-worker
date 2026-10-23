@@ -5,12 +5,12 @@ Accept: text/html
 
 ###
 
-GET http://127.0.0.1:8000/api/health
+GET http://127.0.0.1:8000/eko/health
 Accept: application/json
 
 ###
 
-POST http://127.0.0.1:8000/api/analyze
+POST http://127.0.0.1:8000/eko/analyze
 Content-Type: application/json
 
 {

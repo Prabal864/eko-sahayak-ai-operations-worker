@@ -385,7 +385,7 @@ async def react_asset(asset_path: str):
     return FileResponse(asset)
 
 
-@app.get("/api/health")
+@app.get("/eko/health")
 async def health():
     database = check_database_connection()
     return {
@@ -396,7 +396,7 @@ async def health():
     }
 
 
-@app.post("/api/auth/login")
+@app.post("/eko/auth/login")
 async def login(payload: LoginRequest):
     with db_session() as db:
         user = db.scalar(select(User).where(User.username == payload.username.lower()))
@@ -406,7 +406,7 @@ async def login(payload: LoginRequest):
         return {"token": token, "user": user_data}
 
 
-@app.post("/api/auth/signup")
+@app.post("/eko/auth/signup")
 async def signup(payload: SignupRequest):
     username = payload.username.lower()
     with db_session() as db:
@@ -420,12 +420,12 @@ async def signup(payload: SignupRequest):
         return {"token": token, "user": user_data}
 
 
-@app.get("/api/auth/me")
+@app.get("/eko/auth/me")
 async def me(user: dict[str, str] = Depends(current_user)):
     return {"user": user}
 
 
-@app.post("/api/auth/logout")
+@app.post("/eko/auth/logout")
 async def logout(authorization: str | None = Header(default=None)):
     if authorization and authorization.lower().startswith("bearer "):
         with db_session() as db:
@@ -437,7 +437,7 @@ async def logout(authorization: str | None = Header(default=None)):
     return {"ok": True}
 
 
-@app.post("/api/voice/transcribe")
+@app.post("/eko/voice/transcribe")
 async def transcribe_voice(
     audio: UploadFile = File(...),
     _: dict[str, str] = Depends(current_user),
@@ -478,7 +478,7 @@ async def transcribe_voice(
         raise HTTPException(status_code=502, detail=f"Voice transcription failed: {type(error).__name__}")
 
 
-@app.get("/api/cases")
+@app.get("/eko/cases")
 async def list_cases(user: dict[str, str] = Depends(current_user)):
     with db_session() as db:
         rows = db.scalars(select(Case).where(Case.user_id == user["id"]).order_by(Case.created_at.desc())).all()
@@ -488,7 +488,7 @@ async def list_cases(user: dict[str, str] = Depends(current_user)):
                                             "resolved": sum(c["status"] == "resolved" for c in cases)}}
 
 
-@app.post("/api/analyze")
+@app.post("/eko/analyze")
 async def analyze(payload: CaseInput, user: dict[str, str] = Depends(current_user)):
     provider_name = os.getenv("AI_PROVIDER", "openrouter").lower()
     if provider_name == "gemini":
@@ -510,7 +510,7 @@ async def analyze(payload: CaseInput, user: dict[str, str] = Depends(current_use
         return case_dict(db, db.get(Case, result["id"]))
 
 
-@app.patch("/api/cases/{case_id}")
+@app.patch("/eko/cases/{case_id}")
 async def update_case(case_id: str, payload: CaseStatus, user: dict[str, str] = Depends(current_user)):
     with db_session() as db:
         case = db.scalar(select(Case).where(Case.id == case_id, Case.user_id == user["id"]))
@@ -524,7 +524,7 @@ async def update_case(case_id: str, payload: CaseStatus, user: dict[str, str] = 
         return case_dict(db, case)
 
 
-@app.get("/api/audit")
+@app.get("/eko/audit")
 async def audit(user: dict[str, str] = Depends(current_user)):
     with db_session() as db:
         events = db.scalars(select(AuditEvent).where(AuditEvent.user_id == user["id"]).order_by(AuditEvent.id)).all()

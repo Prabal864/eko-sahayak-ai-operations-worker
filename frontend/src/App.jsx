@@ -61,7 +61,7 @@ function Login({ onLogin }) {
       return;
     }
     try {
-      const path = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+      const path = mode === "login" ? "/eko/auth/login" : "/eko/auth/signup";
       const body = mode === "login" ? { username, password } : { name, username, password };
       const result = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       localStorage.setItem("eko_session", result.token);
@@ -156,7 +156,7 @@ function NewCase({ onCreated }) {
       const form = new FormData();
       form.append("audio", blob, "voice-note.webm");
       try {
-        const result = await api("/api/voice/transcribe", { method: "POST", body: form });
+        const result = await api("/eko/voice/transcribe", { method: "POST", body: form });
         setSummary((current) => current ? `${current} ${result.transcript}` : result.transcript);
         setVoiceStatus("Server transcription added.");
       } catch (error) {
@@ -178,7 +178,7 @@ function NewCase({ onCreated }) {
     event.preventDefault();
     if (summary.trim().length < 8) return;
     setBusy(true);
-    try { const result = await api("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary, source, language, consent_to_share: consent }) }); onCreated(result); }
+    try { const result = await api("/eko/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary, source, language, consent_to_share: consent }) }); onCreated(result); }
     catch (error) { window.alert(error.message); } finally { setBusy(false); }
   };
   return <div className="page"><div className="page-head"><div><h1>Log a new case</h1><p>Capture the situation in the entrepreneur’s own words. Sahayak will structure the next safe action.</p></div></div>
@@ -189,7 +189,7 @@ function NewCase({ onCreated }) {
 
 function CaseDetail({ item, onBack, onUpdated }) {
   const [status, setStatus] = useState(item.status);
-  const save = async () => { const updated = await api(`/api/cases/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); onUpdated(updated); };
+  const save = async () => { const updated = await api(`/eko/cases/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); onUpdated(updated); };
   return <div className="page"><div className="page-head"><div><button className="action-link" onClick={onBack}>← Back to case queue</button><h1 style={{ marginTop: 12 }}>{item.category}</h1><p>{item.id} · Created {formatDate(item.created_at)}</p></div><div><Badge value={item.priority} /> <Badge value={item.status} /></div></div><div className="form-grid"><section className="form-panel"><div className="result-head"><h2>Resolution brief</h2><span className="confidence">{Math.round(item.confidence * 100)}% confidence</span></div><p className="result-summary">{item.root_cause}</p><ResultBlock label="Recommended next action">{item.next_action}</ResultBlock><div className="result-grid"><ResultBlock label="Likely owner">{item.owner}</ResultBlock><ResultBlock label="Escalation path">{item.escalation}</ResultBlock></div><div className="result-block"><label>Evidence used</label>{item.evidence.map((evidence) => <p key={evidence}>• {evidence}</p>)}</div><div className="privacy-note">Privacy check: {item.consent_to_share ? "Consent recorded for a non-identifying summary." : "No sharing consent recorded. Keep this case local."}</div></section><aside className="form-panel"><h2>Move workflow forward</h2><p>Autonomous recommendations stop here. A human owns the decision to close or escalate.</p><div className="field"><label htmlFor="status">Update case status</label><select id="status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="in_review">in review</option><option value="resolved">resolved</option><option value="escalated">escalated</option></select></div><button className="primary" onClick={save}>Save status</button><div className="result-block"><label>Audit events</label>{item.audit.map((event) => <p key={`${event.event}-${event.at}`}><b>{formatEvent(event.event)}</b><br /><span className="muted">{event.detail}</span></p>)}</div></aside></div></div>;
 }
 
@@ -197,7 +197,7 @@ function ResultBlock({ label, children }) { return <div className="result-block"
 
 function Audit() {
   const [events, setEvents] = useState([]);
-  useEffect(() => { api("/api/audit").then((data) => setEvents(data.events.reverse())); }, []);
+  useEffect(() => { api("/eko/audit").then((data) => setEvents(data.events.reverse())); }, []);
   return <div className="page"><div className="page-head"><div><h1>Audit trail</h1><p>Every recommendation and handoff is traceable without exporting raw personal data.</p></div></div><div className="audit-list">{events.map((event) => <div className="audit-row" key={`${event.case_id}-${event.at}`}><span className="audit-dot" /><div><b>{formatEvent(event.event)}</b><small>{event.detail} · {event.case_id} · {formatDate(event.at)}</small></div></div>)}</div></div>;
 }
 
@@ -208,11 +208,11 @@ export default function App() {
   const [cases, setCases] = useState([]);
   const [summary, setSummary] = useState({ open: 0, urgent: 0, resolved: 0 });
   const [selected, setSelected] = useState(null);
-  const refresh = () => api("/api/cases").then((data) => { setCases(data.cases); setSummary(data.summary); return data; });
+  const refresh = () => api("/eko/cases").then((data) => { setCases(data.cases); setSummary(data.summary); return data; });
   useEffect(() => {
     const token = localStorage.getItem("eko_session");
     if (!token) { setAuthChecked(true); return; }
-    api("/api/auth/me").then((data) => setUser(data.user)).catch(() => localStorage.removeItem("eko_session")).finally(() => setAuthChecked(true));
+    api("/eko/auth/me").then((data) => setUser(data.user)).catch(() => localStorage.removeItem("eko_session")).finally(() => setAuthChecked(true));
   }, []);
   useEffect(() => {
     if (!user) return;
@@ -221,7 +221,7 @@ export default function App() {
     });
   }, [user]);
   const handleLogout = async () => {
-    try { await api("/api/auth/logout", { method: "POST" }); } catch { /* Session cleanup still happens locally. */ }
+    try { await api("/eko/auth/logout", { method: "POST" }); } catch { /* Session cleanup still happens locally. */ }
     localStorage.removeItem("eko_session");
     setUser(null);
     setSelected(null);

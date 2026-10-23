@@ -75,16 +75,16 @@ The prototype redacts common patterns for long numeric identifiers, ten-digit ph
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | `/api/health` | Service health |
-| POST | `/api/auth/login` | Create a local demo session |
-| POST | `/api/auth/signup` | Create a local operator account and session |
-| POST | `/api/voice/transcribe` | Transcribe an authenticated audio voice note with Gemini |
-| GET | `/api/auth/me` | Restore the signed-in user |
-| POST | `/api/auth/logout` | Invalidate the current session |
-| GET | `/api/cases` | Cases and summary counts |
-| POST | `/api/analyze` | Analyze and create a case |
-| PATCH | `/api/cases/{case_id}` | Update human workflow status |
-| GET | `/api/audit` | Retrieve audit events |
+| GET | `/eko/health` | Service health |
+| POST | `/eko/auth/login` | Create a local demo session |
+| POST | `/eko/auth/signup` | Create a local operator account and session |
+| POST | `/eko/voice/transcribe` | Transcribe an authenticated audio voice note with Gemini |
+| GET | `/eko/auth/me` | Restore the signed-in user |
+| POST | `/eko/auth/logout` | Invalidate the current session |
+| GET | `/eko/cases` | Cases and summary counts |
+| POST | `/eko/analyze` | Analyze and create a case |
+| PATCH | `/eko/cases/{case_id}` | Update human workflow status |
+| GET | `/eko/audit` | Retrieve audit events |
 
 Swagger documentation is available at `/docs`.
 
@@ -99,18 +99,18 @@ deployment should use an identity provider and durable server-side sessions.
 The New case form supports microphone capture with the browser
 `SpeechRecognition` API when available, which is the low-resource path for
 mobile and desktop browsers. It also records a `MediaRecorder` audio blob and
-sends it to `/api/voice/transcribe`. That endpoint validates the audio type and
+sends it to `/eko/voice/transcribe`. That endpoint validates the audio type and
 size, then uses Gemini multimodal transcription when `GEMINI_API_KEY` is
 configured. If server transcription is unavailable, the browser transcript
 remains usable and the operator can edit it before analysis. Voice text then
-uses the same `/api/analyze` workflow, redaction, safety rules, audit events,
+uses the same `/eko/analyze` workflow, redaction, safety rules, audit events,
 and human review as typed cases.
 
 ## Provider Metadata
 
 ## Database connectivity check
 
-`GET /api/health` calls `check_database_connection()` and runs `SELECT 1`
+`GET /eko/health` calls `check_database_connection()` and runs `SELECT 1`
 against the configured SQLAlchemy engine. It returns `connected`, the database
 type, and a safe diagnostic message without exposing the connection URL.
 
