@@ -56,6 +56,19 @@ passed at runtime and is never copied into the image. For PostgreSQL, keep
 container's network connection. The image uses `requirements-runtime.txt`, so
 test dependencies are not installed in production.
 
+AI provider activity is logged without API keys or raw reports. View it on the
+server with:
+
+```bash
+docker logs -f eko-sahayak-backend | grep "AI "
+```
+
+Successful external AI requests log `AI request succeeded` and the API
+response contains `"provider": "openrouter"` or `"provider": "gemini"`.
+Fallback requests log `AI request failed` or `AI provider unavailable`, and
+the response contains `"provider": "local_rules_fallback"` or
+`"provider": "local_rules_no_key"`.
+
 ### Docker Compose on the server
 
 Copy the repository and the private root `.env` file to the server, then run

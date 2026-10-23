@@ -1,8 +1,10 @@
 import json
 import re
 import asyncio
+import logging
 import os
 import secrets
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -29,6 +31,7 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+ai_logger = logging.getLogger("eko_sahayak.ai")
 
 app = FastAPI(title="Eko Sahayak", version="1.0.0")
 app.add_middleware(
@@ -174,8 +177,12 @@ def classify_case(payload: CaseInput, *, note: str | None = None) -> dict:
 async def classify_with_gemini(payload: CaseInput) -> tuple[dict, str]:
     """Use Gemini for language understanding, while keeping policy decisions local."""
     api_key = os.getenv("GEMINI_API_KEY")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     if not api_key:
+        ai_logger.warning("AI provider unavailable: provider=gemini reason=missing_api_key")
         return classify_case(payload), "local_rules_no_key"
+    started = time.perf_counter()
+    ai_logger.info("AI request started: provider=gemini model=%s source=%s", model, payload.source)
     try:
         from google import genai
 
@@ -191,7 +198,7 @@ Language: {payload.language}
 Redacted report: {redact_local(payload.summary)}"""
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+            model=model,
             contents=prompt,
             config={"response_mime_type": "application/json"},
         )
@@ -231,8 +238,19 @@ Redacted report: {redact_local(payload.summary)}"""
             {"event": "case_received", "detail": "Redacted report retained locally for this demo session.", "at": now_iso()},
             {"event": "ai_triage_completed", "detail": "Gemini JSON validated; local safety policy applied.", "at": now_iso()},
         ]
+        ai_logger.info(
+            "AI request succeeded: provider=gemini model=%s duration_ms=%d validation=passed",
+            model,
+            round((time.perf_counter() - started) * 1000),
+        )
         return result, "gemini"
     except Exception as error:
+        ai_logger.exception(
+            "AI request failed: provider=gemini model=%s duration_ms=%d error=%s",
+            model,
+            round((time.perf_counter() - started) * 1000),
+            type(error).__name__,
+        )
         result = classify_case(payload)
         result["audit"].append({"event": "ai_fallback", "detail": f"Gemini unavailable; deterministic rules used ({type(error).__name__}).", "at": now_iso()})
         return result, "local_rules_fallback"
@@ -241,8 +259,12 @@ Redacted report: {redact_local(payload.summary)}"""
 async def classify_with_openrouter(payload: CaseInput) -> tuple[dict, str]:
     """Use OpenRouter chat completions while preserving the local safety boundary."""
     api_key = os.getenv("OPENROUTER_API_KEY")
+    model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-super-vl:free")
     if not api_key:
+        ai_logger.warning("AI provider unavailable: provider=openrouter reason=missing_api_key")
         return classify_case(payload), "local_rules_no_key"
+    started = time.perf_counter()
+    ai_logger.info("AI request started: provider=openrouter model=%s source=%s", model, payload.source)
     try:
         import httpx
 
@@ -266,7 +288,7 @@ Redacted report: {redact_local(payload.summary)}"""
                     "X-Title": "Eko Sahayak",
                 },
                 json={
-                    "model": os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-super-vl:free"),
+                    "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
                     "response_format": {"type": "json_object"},
@@ -308,8 +330,21 @@ Redacted report: {redact_local(payload.summary)}"""
             {"event": "case_received", "detail": "Redacted report retained locally for this demo session.", "at": now_iso()},
             {"event": "ai_triage_completed", "detail": "OpenRouter JSON validated; local safety policy applied.", "at": now_iso()},
         ]
+        ai_logger.info(
+            "AI request succeeded: provider=openrouter model=%s duration_ms=%d validation=passed",
+            model,
+            round((time.perf_counter() - started) * 1000),
+        )
         return result, "openrouter"
     except Exception as error:
+        status_code = getattr(getattr(error, "response", None), "status_code", "none")
+        ai_logger.exception(
+            "AI request failed: provider=openrouter model=%s duration_ms=%d status=%s error=%s",
+            model,
+            round((time.perf_counter() - started) * 1000),
+            status_code,
+            type(error).__name__,
+        )
         result = classify_case(payload)
         result["audit"].append({"event": "ai_fallback", "detail": f"OpenRouter unavailable; deterministic rules used ({type(error).__name__}).", "at": now_iso()})
         return result, "local_rules_fallback"
@@ -496,6 +531,7 @@ async def analyze(payload: CaseInput, user: dict[str, str] = Depends(current_use
     else:
         result, provider = await classify_with_openrouter(payload)
     result["provider"] = provider
+    ai_logger.info("AI decision recorded: case_id=%s provider=%s", result["id"], provider)
     with db_session() as db:
         db.add(Case(id=result["id"], user_id=user["id"], status=result["status"], category=result["category"],
                     priority=result["priority"], owner=result["owner"], root_cause=result["root_cause"],
