@@ -84,6 +84,19 @@ OTPs, PINs, passwords, full account numbers, or unnecessary personal details.
 
 ### React frontend
 
+For local development, Vite proxies `/api` requests to the local backend.
+Production builds use `https://api.prabalsingh.dev` by default. To override
+the API origin, set `VITE_API_BASE_URL` in the frontend environment before
+building, for example:
+
+```text
+VITE_API_BASE_URL=https://api.prabalsingh.dev
+```
+
+The API domain must forward requests to the FastAPI container on port `8000`
+and expose the backend health endpoint at
+`https://api.prabalsingh.dev/api/health`.
+
 Node.js 20+ is required for the frontend:
 
 ```powershell

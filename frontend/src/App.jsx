@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || (import.meta.env.DEV ? "" : "https://api.prabalsingh.dev");
+
 const api = async (path, options = {}) => {
   const token = localStorage.getItem("eko_session");
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const error = new Error(body.detail || "Request failed");
